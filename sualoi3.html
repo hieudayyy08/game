@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simon Says - Trò chơi Trí nhớ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900;bold&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1f2937;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+        .game-board {
+            display: grid;
+            grid-template-columns: repeat(var(--grid-size), 1fr);
+            gap: 12px;
+            width: 600px;
+            max-width: 95vw;
+            margin: auto;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            background-color: #374151;
+            padding: 12px;
+        }
+        .pad {
+            min-height: 100%;
+            padding-top: 100%;
+            position: relative;
+            transition: all 0.15s ease-out;
+            cursor: pointer;
+            opacity: 0.8;
+            border: 4px solid #374151;
+            border-radius: 8px;
+            user-select: none;
+        }
+        .pad.lit {
+            opacity: 1;
+            transform: scale(1.05);
+            box-shadow: 0 0 15px 3px rgba(255, 255, 255, 0.5);
+        }
+        .no-click {
+            pointer-events: none;
+        }
+        /* Ẩn các màn hình ban đầu */
+        .screen { display: none; }
+        .screen.active { display: block; }
+        
+        /* Modal (Game Over) */
+        .modal-backdrop {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0, 0, 0, 0.75);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease-in-out;
+        }
+        .modal-backdrop.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .modal-content {
+            background-color: #374151; /* Nền xám tối */
+            color: white;
+            padding: 24px;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            transform: scale(0.95);
+            transition: transform 0.3s ease-in-out;
+        }
+        .modal-backdrop.active .modal-content {
+            transform: scale(1);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Wrapper chứa các màn hình -->
+    <div id="start-wrapper" class="w-full max-w-lg">
+        
+        <!-- Màn hình 1: Nhập Tên -->
+        <div id="name-screen" class="screen active w-full bg-gray-800 p-6 md:p-10 rounded-xl shadow-2xl text-center transition duration-500">
+            <h2 class="text-4xl font-black text-white mb-4">SIMON SAYS</h2>
+            <h3 class="text-xl font-semibold text-indigo-400 mb-6">Trò chơi Trí nhớ Thời gian Thực</h3>
+            
+            <div id="firebase-status-box" class="p-3 mb-6 rounded-lg text-sm font-medium transition duration-300 bg-yellow-900 text-yellow-300 border border-yellow-700">
+                Trạng thái Firebase: Đang khởi tạo...
+            </div>
+
+            <div class="mb-8 p-4 bg-gray-700 rounded-lg">
+                <label for="player-name-input" class="block text-gray-300 font-medium mb-2 text-left">Đặt tên người chơi:</label>
+                <input type="text" id="player-name-input" maxlength="15" placeholder="Nhập tên của bạn (2-15 ký tự)"
+                       class="flex-grow p-3 rounded-lg bg-gray-600 text-white border border-gray-500 focus:ring-indigo-500 focus:border-indigo-500 w-full"
+                       value="">
+                <p id="current-player-name" class="mt-2 text-sm text-yellow-400 text-left overflow-x-auto break-all">ID người chơi (UID): Đang tải...</p>
+            </div>
+            
+            <button id="continue-button" disabled class="bg-indigo-600 text-white font-bold py-4 px-12 rounded-full text-xl transition duration-300 shadow-xl opacity-50 cursor-not-allowed">
+                LƯU TÊN & TIẾP TỤC
+            </button>
+        </div>
+        
+        <!-- Màn hình 2: Chọn Độ Khó & Leaderboard -->
+        <div id="difficulty-screen" class="screen w-full bg-gray-800 p-6 md:p-10 rounded-xl shadow-2xl text-center transition duration-500">
+            <h2 class="text-3xl font-black text-white mb-4">CHỌN CẤP ĐỘ</h2>
+            
+            <div class="mb-6">
+                <label for="difficulty-select" class="block text-gray-300 font-medium mb-2 text-left">Chọn Cấp độ:</label>
+                <select id="difficulty-select" class="w-full p-3 rounded-lg bg-gray-700 text-white border border-gray-600 focus:ring-indigo-500 focus:border-indigo-500">
+                    <option value="easy">Dễ (4 màu, chậm)</option>
+                    <option value="medium">Vừa (9 màu, vừa)</option>
+                    <option value="hard" selected>Khó (16 màu, nhanh)</option>
+                    <option value="superhard">Siêu Khó (25 màu, rất nhanh)</option>
+                </select>
+            </div>
+
+            <button id="play-button" class="bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-12 rounded-full text-xl transition duration-300 shadow-xl hover:scale-105">
+                CHƠI NGAY
+            </button>
+            <button id="change-name-button" class="block mx-auto mt-4 text-sm text-indigo-400 hover:text-indigo-300">
+                Đổi Tên Người Chơi
+            </button>
+            
+            <div class="mt-8">
+                <h4 class="text-2xl font-black text-yellow-400 mb-4 border-b pb-2 border-gray-600">BẢNG XẾP HẠNG TOP 5</h4>
+                <div id="leaderboard-container" class="text-gray-200">
+                    <div class="flex justify-between font-extrabold border-b border-gray-600 pb-1 mb-2">
+                        <span class="w-1/6 text-left">Hạng</span>
+                        <span class="w-3/6 text-left">Tên</span>
+                        <span class="w-2/6 text-right">Điểm (Cấp)</span>
+                    </div>
+                    <ul id="leaderboard-list" class="space-y-1 text-sm">
+                        <li class="text-center text-gray-400 py-4">Đang tải bảng xếp hạng...</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 2. Vùng Chứa Trò Chơi (Game Container - Ẩn) -->
+    <div id="game-container" class="screen flex flex-col items-center justify-center p-6 md:p-10">
+        
+        <div class="p-4 bg-gray-800 rounded-xl shadow-lg w-full max-w-lg text-center mb-6">
+            <h1 class="text-3xl md:text-4xl font-extrabold text-white mb-4">Simon Says</h1>
+            <div id="level-display" class="text-2xl font-bold text-gray-200 mb-2">Cấp độ: 1</div>
+            <div id="status-display" class="text-base font-semibold text-yellow-400 mb-4 h-6">Nhấn BẮT ĐẦU</div>
+            <div class="flex flex-row justify-center space-x-4">
+                <button id="game-start-button" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-full transition duration-300 shadow-xl">
+                    BẮT ĐẦU
+                </button>
+                <button id="back-button" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-8 rounded-full transition duration-300 shadow-xl">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-5 h-5 inline-block mr-1">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+                    </svg>
+                    Quay lại
+                </button>
+            </div>
+        </div>
+
+        <div id="game-grid" class="game-board"></div>
+
+        <div class="mt-4 p-4 bg-gray-800 rounded-xl shadow-lg w-full max-w-lg text-center">
+            <p class="text-gray-300">Mục tiêu: Lặp lại trình tự nhấp nháy của máy tính.</p>
+            <p id="high-score-display" class="text-xl font-extrabold text-indigo-400 mt-2">Điểm cao cá nhân: 0</p>
+        </div>
+    </div>
+
+    <!-- 3. Modal Game Over (Ẩn ban đầu) -->
+    <div id="game-over-modal" class="modal-backdrop">
+        <div class="modal-content">
+            <h2 id="modal-title" class="text-4xl font-black text-center text-red-500 mb-4">GAME OVER</h2>
+            <p id="modal-score" class="text-center text-2xl font-bold mb-1">Bạn đạt được: <span class="text-yellow-400">Cấp 0</span></p>
+            <p id="modal-new-record" class="text-center text-lg font-semibold text-green-400 mb-6 hidden">🎉 KỶ LỤC MỚI! 🎉</p>
+
+            <div class="mt-4">
+                <h4 class="text-xl font-bold text-yellow-400 mb-2 text-center border-b border-gray-500 pb-1">Bảng Xếp Hạng (<span id="modal-difficulty-name"></span>)</h4>
+                <div id="modal-leaderboard-container" class="text-gray-200 max-h-48 overflow-y-auto">
+                    <div class="flex justify-between font-extrabold border-b border-gray-600 pb-1 mb-2 sticky top-0 bg-gray-700 px-1">
+                        <span class="w-1/6 text-left">Hạng</span>
+                        <span class="w-3/6 text-left">Tên</span>
+                        <span class="w-2/6 text-right">Điểm (Cấp)</span>
+                    </div>
+                    <ul id="modal-leaderboard-list" class="space-y-1 text-sm px-1">
+                        <!-- Modal Leaderboard items -->
+                    </ul>
+                </div>
+            </div>
+
+            <div class="mt-8 flex flex-col md:flex-row gap-4">
+                <button id="retry-button" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300 shadow-lg text-lg">
+                    CHƠI LẠI
+                </button>
+                <button id="menu-button" class="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300 shadow-lg text-lg">
+                    QUAY LẠI MÀN HÌNH CHÍNH
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <script type="module">
+        // --- FIREBASE IMPORTS (TỪ CDN) ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        // BẮT BUỘC: Thêm Auth và Firestore
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, query, where, getDoc, runTransaction, setLogLevel, getDocs, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // --- CẤU HÌNH FIREBASE MÀ BẠN ĐÃ CUNG CẤP ---
+        const firebaseConfig = {
+          apiKey: "AIzaSyBtAocn4ppLW2f5Pq-szy2RUFqWYOxlXTQ",
+          authDomain: "tingk-311ee.firebaseapp.com",
+          projectId: "tingk-311ee",
+          storageBucket: "tingk-311ee.firebasestorage.app",
+          messagingSenderId: "273578835061",
+          appId: "1:273578835061:web:007d66d6f992a5c47e8c3c",
+          measurementId: "G-8SF1X408JV"
+        };
+
+        // --- BIẾN TOÀN CỤC (Đã sửa đổi) ---
+        const appId = firebaseConfig.appId; // Lấy từ config của bạn
+        const initialAuthToken = null; // BẮT BUỘC: Luôn đăng nhập ẩn danh
+        
+        let db;
+        let auth;
+        let userId = null;
+        let isFirebaseEnabled = false; 
+        let playerName = 'Người chơi'; 
+        let personalBestScores = {}; // Lưu điểm cao cá nhân cho mỗi độ khó
+
+        // Cấu hình Khó khăn
+        const DIFFICULTIES = {
+            'easy': { colors: 4, root: 2, speed: 450, name: 'Dễ' }, 
+            'medium': { colors: 9, root: 3, speed: 300, name: 'Vừa' }, 
+            'hard': { colors: 16, root: 4, speed: 200, name: 'Khó' }, 
+            'superhard': { colors: 25, root: 5, speed: 120, name: 'Siêu Khó' } 
+        };
+
+        // Định nghĩa 25 màu
+        const ALL_COLORS = {
+            'green': ['#10b981', '#6ee7b7'], 'red': ['#ef4444', '#fca5a5'], 'yellow': ['#f59e0b', '#fcd34d'],
+            'blue': ['#3b82f6', '#93c5fd'], 'purple': ['#8b5cf6', '#a78bfa'], 'cyan': ['#06b6d4', '#67e8f9'],
+            'pink': ['#ec4899', '#f472b6'], 'lime': ['#84cc16', '#bef264'], 'orange': ['#f97316', '#fdba74'],
+            'brown': ['#92400e', '#d1b4a1'], 'teal': ['#14b8a6', '#5eead4'], 'indigo': ['#4f46e5', '#818cf8'],
+            'violet': ['#a855f7', '#c4b5fd'], 'fuchsia': ['#d946ef', '#f0abf7'], 'rose': ['#f43f5e', '#fda4af'],
+            'emerald': ['#059669', '#34d399'], 'sky': ['#0ea5e9', '#7dd3fc'], 'slate': ['#64748b', '#94a3b8'],
+            'olive': ['#84cc16', '#d9f99d'], 'stone': ['#57534e', '#a8a29e'], 'gold': ['#fbbf24', '#fde047'],
+            'lightblue': ['#2563eb', '#93c5fd'], 'darkgreen': ['#065f46', '#10b981'], 'maroon': ['#881337', '#be123c'],
+            'silver': ['#94a3b8', '#e2e8f0']
+        };
+
+        let PADS = {}; 
+        let PAD_KEYS = {}; 
+
+        // DOM elements
+        const startWrapper = document.getElementById('start-wrapper');
+        const nameScreen = document.getElementById('name-screen');
+        const difficultyScreen = document.getElementById('difficulty-screen');
+        const gameContainer = document.getElementById('game-container');
+        
+        const firebaseStatusBox = document.getElementById('firebase-status-box');
+        const playerNameInput = document.getElementById('player-name-input');
+        const currentPlayerNameDisplay = document.getElementById('current-player-name');
+        const continueButton = document.getElementById('continue-button');
+        const changeNameButton = document.getElementById('change-name-button');
+        
+        const difficultySelect = document.getElementById('difficulty-select'); 
+        const playButton = document.getElementById('play-button');
+        const leaderboardList = document.getElementById('leaderboard-list');
+
+        const gameStartButton = document.getElementById('game-start-button');
+        const backButton = document.getElementById('back-button');
+        const statusDisplay = document.getElementById('status-display');
+        const levelDisplay = document.getElementById('level-display');
+        const highScoreDisplay = document.getElementById('high-score-display');
+        const gameGrid = document.getElementById('game-grid');
+
+        const gameOverModal = document.getElementById('game-over-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalScore = document.getElementById('modal-score');
+        const modalNewRecord = document.getElementById('modal-new-record');
+        const modalDifficultyName = document.getElementById('modal-difficulty-name');
+        const modalLeaderboardList = document.getElementById('modal-leaderboard-list');
+        const retryButton = document.getElementById('retry-button');
+        const menuButton = document.getElementById('menu-button');
+
+        // Game state variables
+        let gameSequence = [];
+        let playerSequence = [];
+        let level = 1;
+        let isPlayerTurn = false;
+        let gameRunning = false;
+        let currentDifficultyKey = 'hard'; 
+        let currentDifficulty = DIFFICULTIES[currentDifficultyKey];
+        let gameSpeed = 0; 
+        
+        // --- QUẢN LÝ MÀN HÌNH ---
+        function showScreen(screenId) {
+            [nameScreen, difficultyScreen, gameContainer].forEach(s => s.classList.remove('active', 'hidden'));
+            
+            if (screenId === 'name-screen') {
+                startWrapper.classList.remove('hidden');
+                gameContainer.classList.add('hidden');
+                nameScreen.classList.add('active');
+                difficultyScreen.classList.add('hidden');
+            } else if (screenId === 'difficulty-screen') {
+                startWrapper.classList.remove('hidden');
+                gameContainer.classList.add('hidden');
+                nameScreen.classList.add('hidden');
+                difficultyScreen.classList.add('active');
+            } else if (screenId === 'game-container') {
+                startWrapper.classList.add('hidden');
+                gameContainer.classList.add('active');
+            }
+        }
+        
+        // --- FIREBASE & AUTH SETUP (Đã sửa) ---
+
+        function updateFirebaseStatus(message, isError = false) {
+            if (!firebaseStatusBox) return;
+            firebaseStatusBox.textContent = `Trạng thái Firebase: ${message}`;
+            if (isError) {
+                firebaseStatusBox.className = 'p-3 mb-6 rounded-lg text-sm font-medium bg-red-900 text-red-300 border border-red-700';
+            } else {
+                firebaseStatusBox.className = 'p-3 mb-6 rounded-lg text-sm font-medium bg-green-900 text-green-300 border border-green-700';
+            }
+        }
+        
+        function handleFirebaseError(error, step) {
+            isFirebaseEnabled = false;
+            console.error(`LỖI FIREBASE BƯỚC ${step}:`, error);
+            
+            let errorMessage = "Lỗi không xác định.";
+            if (error && error.message) {
+                errorMessage = error.message.replace(/Firebase: /, '').trim();
+            } else if (error) {
+                 errorMessage = error.toString();
+            }
+            
+            updateFirebaseStatus(`LỖI KẾT NỐI (${step}): ${errorMessage}`, true);
+            currentPlayerNameDisplay.innerHTML = `<span class="text-red-400 font-bold">CHẾ ĐỘ ĐỘC LẬP (Lỗi kết nối)</span>`;
+            leaderboardList.innerHTML = `<li class="text-center text-red-400 py-4 font-bold">BẢNG XẾP HẠNG TẮT: ${errorMessage}</li>`;
+            
+            // Cho phép chơi ở chế độ độc lập
+            validatePlayerName(); 
+        }
+
+        async function setupFirebase() {
+            updateFirebaseStatus("Đang khởi tạo với cấu hình tùy chỉnh...");
+
+            // 1. Khởi tạo App (Sử dụng config của bạn)
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                // setLogLevel('Debug');
+                isFirebaseEnabled = true;
+                updateFirebaseStatus("Khởi tạo App & Firestore thành công. Đang xác thực...");
+            } catch (error) {
+                handleFirebaseError(error, "Khởi tạo App");
+                return;
+            }
+            
+            // 2. Tiến hành Xác thực (Sử dụng đăng nhập ẩn danh vì initialAuthToken = null)
+            try {
+                if (initialAuthToken) {
+                    // Sẽ không chạy
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                handleFirebaseError(error, "Xác thực (Auth)");
+                return;
+            }
+
+            // 3. Thiết lập lắng nghe trạng thái xác thực
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    userId = user.uid;
+                    currentPlayerNameDisplay.textContent = `ID người chơi (UID): ${userId}`;
+                    
+                    updateFirebaseStatus("Kết nối Firebase HOÀN TẤT. Đã xác thực.");
+                    await loadPlayerName(); // Tải tên đã lưu
+                    loadLeaderboard(difficultySelect.value); // Tải leaderboard
+                } else {
+                    handleFirebaseError(new Error("Người dùng không được xác thực."), "Trạng thái Auth");
+                }
+            });
+        }
+        
+        // --- PLAYER NAME LOGIC ---
+        
+        function validatePlayerName() {
+            const currentName = playerNameInput.value.trim();
+            const isValid = currentName.length >= 2 && currentName.length <= 15; 
+            
+            if (isValid) {
+                continueButton.disabled = false;
+                continueButton.classList.remove('opacity-50', 'cursor-not-allowed');
+            } else {
+                continueButton.disabled = true;
+                continueButton.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+            return isValid;
+        }
+
+        const getPlayerProfileRef = () => {
+            if (!userId || !db) return null;
+            // Lưu dữ liệu riêng tư: artifacts/{appId}/users/{userId}/profile/data
+            // Sử dụng appId trong config của bạn
+            return doc(db, `artifacts/${appId}/users/${userId}/profile`, 'data');
+        };
+
+        async function loadPlayerName() {
+            if (!isFirebaseEnabled) {
+                playerName = localStorage.getItem('simonPlayerName') || `Guest-${Math.random().toString(36).substr(2, 4)}`;
+                playerNameInput.value = playerName;
+                validatePlayerName();
+                return;
+            }
+
+            const profileRef = getPlayerProfileRef();
+            if (!profileRef) return;
+            
+            try {
+                const docSnap = await getDoc(profileRef);
+                if (docSnap.exists() && docSnap.data().name) {
+                    playerName = docSnap.data().name;
+                    playerNameInput.value = playerName;
+                } else {
+                    playerName = `Guest-${userId.substring(0, 4)}`;
+                    playerNameInput.value = playerName;
+                }
+            } catch (e) {
+                console.error("Lỗi khi tải tên:", e);
+                playerName = `Guest-${userId.substring(0, 4)}`;
+            }
+            validatePlayerName();
+        }
+
+        async function savePlayerName() {
+            if (!validatePlayerName()) return;
+            
+            playerName = playerNameInput.value.trim();
+
+            if (!isFirebaseEnabled || !auth.currentUser) {
+                localStorage.setItem('simonPlayerName', playerName);
+                console.warn("Chế độ Độc lập: Tên đã được lưu vào localStorage.");
+                showScreen('difficulty-screen');
+                return;
+            }
+
+            const profileRef = getPlayerProfileRef();
+
+            try {
+                continueButton.disabled = true;
+                continueButton.textContent = "ĐANG LƯU...";
+                await setDoc(profileRef, { name: playerName, userId: userId }, { merge: true });
+                showScreen('difficulty-screen');
+            } catch (e) {
+                console.error("Lỗi khi lưu tên:", e);
+                alertUser("Lỗi khi lưu tên. Vui lòng thử lại.");
+            } finally {
+                continueButton.disabled = false;
+                continueButton.textContent = "LƯU TÊN & TIẾP TỤC";
+            }
+        }
+        
+        // --- GAME LOGIC ---
+
+        function updateHighScoreDisplay() {
+            const best = personalBestScores[currentDifficultyKey] || 0;
+            highScoreDisplay.textContent = `Điểm cao cá nhân: ${best}`;
+        }
+        
+        async function saveScoreToLeaderboard(finalScore, difficultyKey) {
+            // Luôn cập nhật điểm cao cá nhân (biến tạm)
+            const currentBest = personalBestScores[difficultyKey] || 0;
+            let isNewRecord = false;
+            if (finalScore > currentBest) {
+                personalBestScores[difficultyKey] = finalScore;
+                isNewRecord = true;
+            }
+
+            if (!isFirebaseEnabled || !userId || !db) {
+                console.warn("Chế độ Độc lập: Không thể lưu điểm vào Leaderboard.");
+                return isNewRecord; // Trả về nếu là kỷ lục mới (offline)
+            }
+            
+            const currentName = playerName;
+            const leaderboardId = `${userId}_${difficultyKey}`;
+            // Lưu dữ liệu công cộng: artifacts/{appId}/public/data/leaderboard/{documentId}
+            const scoreRef = doc(db, `artifacts/${appId}/public/data/leaderboard`, leaderboardId);
+            
+            try {
+                await runTransaction(db, async (transaction) => {
+                    const currentScoreDoc = await transaction.get(scoreRef);
+                    const existingScore = currentScoreDoc.exists() ? currentScoreDoc.data().score : 0;
+
+                    if (finalScore > existingScore) {
+                        transaction.set(scoreRef, {
+                            userId: userId,
+                            name: currentName,
+                            score: finalScore,
+                            difficulty: difficultyKey,
+                            timestamp: Date.now() 
+                        });
+                    }
+                });
+            } catch (e) {
+                console.error("Lỗi khi lưu điểm vào Leaderboard:", e);
+            }
+            return isNewRecord;
+        }
+
+        function renderLeaderboard(scores, targetListElement) {
+            targetListElement.innerHTML = '';
+
+            if (scores.length === 0) {
+                targetListElement.innerHTML = `<li class="text-center text-gray-400 py-2">Chưa có điểm nào cho cấp độ này.</li>`;
+                return;
+            }
+
+            scores.forEach((data, index) => {
+                const isCurrentUser = data.userId === userId; 
+                const highlightClass = isCurrentUser ? 'bg-indigo-600/70 font-bold border-l-4 border-yellow-400' : 'hover:bg-gray-700/50';
+                
+                const listItem = document.createElement('li');
+                listItem.className = `flex justify-between p-2 rounded-lg ${highlightClass} transition duration-150`;
+                listItem.innerHTML = `
+                    <span class="w-1/6 text-left">${index + 1}.</span>
+                    <span class="w-3/6 text-left truncate">${data.name}</span>
+                    <span class="w-2/6 text-right text-yellow-300">${data.score}</span>
+                `;
+                targetListElement.appendChild(listItem);
+            });
+        }
+
+        // --- LEADERBOARD LISTENER (REAL-TIME) ---
+
+        let unsubscribeLeaderboard = null;
+        let currentLeaderboardData = []; // Cache dữ liệu leaderboard
+
+        function loadLeaderboard(difficultyKey) {
+            if (!isFirebaseEnabled || !db) {
+                leaderboardList.innerHTML = `<li class="text-center text-red-400 py-4 font-bold">BẢNG XẾP HẠNG TẮT (Độc lập).</li>`;
+                return;
+            }
+
+            if (unsubscribeLeaderboard) {
+                unsubscribeLeaderboard();
+            }
+
+            leaderboardList.innerHTML = `<li class="text-center text-gray-400 py-4">Đang tải bảng xếp hạng...</li>`;
+
+            // FIX: Removed orderBy and limit from the query to avoid the index error.
+            const leaderboardQuery = query(
+                collection(db, `artifacts/${appId}/public/data/leaderboard`),
+                where('difficulty', '==', difficultyKey)
+                // Sorting and limiting will be done in JavaScript.
+            );
+
+            unsubscribeLeaderboard = onSnapshot(leaderboardQuery, (snapshot) => {
+                const allScores = []; // Tải tất cả điểm cho độ khó này
+                let personalBest = 0;
+                
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    allScores.push(data);
+                    
+                    if (data.userId === userId) {
+                         personalBest = Math.max(personalBest, data.score);
+                    }
+                });
+                
+                // NEW STEP 1: Sort scores locally by 'score' in descending order.
+                allScores.sort((a, b) => b.score - a.score);
+                
+                // NEW STEP 2: Limit to top 10 after sorting.
+                const topScores = allScores.slice(0, 10);
+                
+                currentLeaderboardData = topScores; // Cập nhật cache
+                personalBestScores[difficultyKey] = personalBest; // Cập nhật điểm cao cá nhân
+                updateHighScoreDisplay();
+                renderLeaderboard(topScores, leaderboardList); // Render màn hình chính
+
+            }, (error) => {
+                console.error("Lỗi khi tải Leaderboard (onSnapshot):", error);
+                leaderboardList.innerHTML = `<li class="text-center text-red-400 py-4">Lỗi tải dữ liệu Leaderboard: Vui lòng kiểm tra Console.</li>`;
+            });
+        }
+        
+        // --- UTILITY & GAME MECHANICS ---
+        
+        function alertUser(message, isGameStatus = false) {
+            if(isGameStatus) {
+                statusDisplay.textContent = message;
+                return;
+            }
+            // Hiển thị thông báo tạm thời trên màn hình game
+            const originalStatus = statusDisplay.textContent;
+            statusDisplay.textContent = message;
+            setTimeout(() => {
+                 if (gameRunning) {
+                     statusDisplay.textContent = originalStatus;
+                 } else {
+                     statusDisplay.textContent = 'Nhấn BẮT ĐẦU';
+                 }
+            }, 2000);
+        }
+
+        async function flashPad(key) {
+            const pad = PADS[key];
+            if (!pad) return; 
+            
+            const originalColor = ALL_COLORS[key][0];
+            const litColor = ALL_COLORS[key][1];
+
+            pad.classList.add('lit');
+            pad.style.backgroundColor = litColor; 
+            
+            await new Promise(resolve => setTimeout(resolve, gameSpeed * 0.7));
+
+            pad.classList.remove('lit');
+            pad.style.backgroundColor = originalColor; 
+        }
+
+        function setupGameBoard(difficultyKey) {
+            gameGrid.innerHTML = ''; 
+            currentDifficulty = DIFFICULTIES[difficultyKey];
+            currentDifficultyKey = difficultyKey;
+            PADS = {};
+            PAD_KEYS = [];
+
+            const colorKeys = Object.keys(ALL_COLORS);
+            const selectedKeys = colorKeys.slice(0, currentDifficulty.colors);
+            PAD_KEYS = selectedKeys;
+            
+            gameGrid.style.setProperty('--grid-size', currentDifficulty.root);
+            
+            selectedKeys.forEach(key => {
+                const pad = document.createElement('div');
+                pad.id = `${key}-pad`;
+                pad.className = 'pad';
+                pad.dataset.key = key;
+                pad.style.backgroundColor = ALL_COLORS[key][0];
+                pad.addEventListener('click', () => handlePlayerClick(key));
+                PADS[key] = pad;
+                gameGrid.appendChild(pad);
+            });
+            
+            updateHighScoreDisplay(); // Cập nhật điểm cao cho độ khó này
+        }
+
+
+        function initializeGame() {
+            gameSequence = [];
+            playerSequence = [];
+            level = 1;
+            gameSpeed = currentDifficulty.speed; 
+            isPlayerTurn = false;
+            gameRunning = true;
+            levelDisplay.textContent = `Cấp độ: ${level}`; 
+            statusDisplay.textContent = 'Máy đang tạo trình tự...';
+            gameStartButton.textContent = 'ĐANG CHƠI...'; 
+            gameStartButton.disabled = true; 
+            gameStartButton.classList.add('opacity-50');
+            backButton.disabled = true; 
+            backButton.classList.add('opacity-50');
+            
+            setTimeout(nextRound, 1000);
+        }
+
+        function nextRound() {
+            playerSequence = [];
+            isPlayerTurn = false;
+            levelDisplay.textContent = `Cấp độ: ${level}`;
+            statusDisplay.textContent = 'Máy đang tạo trình tự...';
+            
+            // Tăng tốc độ
+            if (level > 1 && level % 4 === 0) {
+                gameSpeed = Math.max(80, gameSpeed * 0.9); 
+            }
+
+            const randomPad = PAD_KEYS[Math.floor(Math.random() * PAD_KEYS.length)];
+            gameSequence.push(randomPad);
+
+            playSequence();
+        }
+
+        async function playSequence() {
+            gameGrid.classList.add('no-click');
+            const pauseTime = Math.max(50, gameSpeed * 0.4); 
+
+            await new Promise(resolve => setTimeout(resolve, 500)); // Chờ 0.5s
+
+            for (const padKey of gameSequence) {
+                await flashPad(padKey);
+                await new Promise(resolve => setTimeout(resolve, pauseTime));
+            }
+
+            gameGrid.classList.remove('no-click');
+            isPlayerTurn = true;
+            statusDisplay.textContent = `Đến lượt bạn! Lặp lại ${gameSequence.length} bước.`;
+        }
+
+        function handlePlayerClick(key) {
+            if (!isPlayerTurn || !gameRunning) return;
+
+            flashPad(key); 
+
+            playerSequence.push(key);
+            const index = playerSequence.length - 1;
+
+            if (playerSequence[index] !== gameSequence[index]) {
+                gameOver();
+                return;
+            }
+
+            if (playerSequence.length === gameSequence.length) {
+                isPlayerTurn = false;
+                level++;
+                statusDisplay.textContent = 'Chính xác! Chuẩn bị...';
+                
+                setTimeout(nextRound, 1500);
+            }
+        }
+
+        async function gameOver() {
+            gameRunning = false;
+            isPlayerTurn = false;
+            gameGrid.classList.add('no-click');
+            
+            // Hiệu ứng thua
+            Object.values(PADS).forEach(pad => {
+                pad.style.backgroundColor = '#f87171'; 
+                pad.classList.add('lit');
+            });
+            
+            const finalScore = level - 1;
+            statusDisplay.textContent = `GAME OVER! Bạn đạt cấp độ ${finalScore}.`;
+            
+            // Lưu điểm (Online hoặc Offline) và kiểm tra kỷ lục mới
+            const isNewRecord = await saveScoreToLeaderboard(finalScore, currentDifficultyKey);
+            
+            // Hiển thị Modal Game Over
+            modalTitle.textContent = "GAME OVER!";
+            modalScore.innerHTML = `Bạn đạt được: <span class="text-yellow-400">Cấp ${finalScore}</span>`;
+            modalDifficultyName.textContent = currentDifficulty.name;
+            
+            if (isNewRecord) {
+                modalNewRecord.classList.remove('hidden');
+            } else {
+                modalNewRecord.classList.add('hidden');
+            }
+            
+            // Hiển thị leaderboard trong modal (từ dữ liệu cache)
+            renderLeaderboard(currentLeaderboardData, modalLeaderboardList);
+
+            // Chờ 1s rồi hiển thị modal
+            setTimeout(() => {
+                gameOverModal.classList.add('active');
+            }, 1000);
+        }
+        
+        function resetGame(startNew = false) {
+             // Ẩn modal
+            gameOverModal.classList.remove('active');
+            
+            // Reset màu pad
+            Object.values(PADS).forEach(pad => {
+                pad.classList.remove('lit');
+                pad.style.backgroundColor = ALL_COLORS[pad.dataset.key][0];
+            });
+            
+            gameGrid.classList.remove('no-click');
+            statusDisplay.textContent = 'Nhấn BẮT ĐẦU';
+            levelDisplay.textContent = 'Cấp độ: 1';
+            gameStartButton.textContent = 'BẮT ĐẦU';
+            gameStartButton.disabled = false;
+            gameStartButton.classList.remove('opacity-50');
+            backButton.disabled = false;
+            backButton.classList.remove('opacity-50');
+
+            if (startNew) {
+                initializeGame();
+            }
+        }
+
+        // --- EVENT LISTENERS ---
+        
+        // Màn hình 1
+        playerNameInput.addEventListener('input', validatePlayerName); 
+        continueButton.addEventListener('click', savePlayerName);
+        
+        // Màn hình 2
+        changeNameButton.addEventListener('click', () => showScreen('name-screen'));
+        playButton.addEventListener('click', () => {
+            currentDifficultyKey = difficultySelect.value;
+            setupGameBoard(currentDifficultyKey);
+            showScreen('game-container');
+            statusDisplay.textContent = 'Nhấn BẮT ĐẦU';
+        });
+        difficultySelect.addEventListener('change', (e) => {
+            currentDifficultyKey = e.target.value;
+            if (isFirebaseEnabled) {
+                loadLeaderboard(currentDifficultyKey); 
+            }
+        }); 
+        
+        // Màn hình 3 (Game)
+        gameStartButton.addEventListener('click', initializeGame);
+        backButton.addEventListener('click', () => {
+            gameRunning = false;
+            gameSequence = [];
+            playerSequence = [];
+            showScreen('difficulty-screen');
+            // Tải lại Leaderboard khi quay về
+            if (isFirebaseEnabled) {
+                loadLeaderboard(difficultySelect.value); 
+            }
+        });
+
+        // Modal Game Over
+        retryButton.addEventListener('click', () => resetGame(true)); // Chơi lại ngay
+        menuButton.addEventListener('click', () => {
+            resetGame(false); // Chỉ reset trạng thái
+            showScreen('difficulty-screen'); // Quay về menu
+            if (isFirebaseEnabled) {
+                loadLeaderboard(difficultySelect.value); // Tải lại leaderboard
+            }
+        });
+
+        // --- KHỞI TẠO ---
+        showScreen('name-screen'); // Bắt đầu ở màn hình nhập tên
+        setupFirebase(); 
+    </script>
+</body>
+</html>
